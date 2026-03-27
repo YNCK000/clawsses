@@ -1270,9 +1270,9 @@ class HudActivity : ComponentActivity() {
                         ))
                     }
 
-                    // Auto-scroll to bottom during streaming (unless user scrolled up)
-                    val shouldAutoScroll = current.focusedArea != ChatFocusArea.CONTENT ||
-                        current.scrollPosition >= current.messages.size - 2
+                    // Auto-scroll to bottom during streaming only if user is already at bottom.
+                    // If user has scrolled up to read, don't yank them down - let them read in peace.
+                    val shouldAutoScroll = current.isScrolledToEnd
 
                     hudState.value = current.copy(
                         messages = messages,
@@ -1490,6 +1490,13 @@ class HudActivity : ComponentActivity() {
                     Log.d(GlassesApp.TAG, "TTS state: enabled=$enabled, voice=$voiceName")
                 }
 
+                "get_ip" -> {
+                    // Phone requesting local WiFi IP for ADB connection
+                    val localIp = getLocalWifiIp()
+                    Log.i(GlassesApp.TAG, "get_ip request: responding with $localIp")
+                    phoneConnection.sendToPhone("""{"type":"glasses_ip","ip":"${localIp ?: ""}"}""")
+                }
+
                 else -> {
                     Log.d(GlassesApp.TAG, "Unknown message type: $type")
                 }
@@ -1596,6 +1603,23 @@ class HudActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.w(GlassesApp.TAG, "Failed to load HUD preferences, using defaults", e)
             return Pair(HudPosition.FULL, HudDisplaySize.NORMAL)
+        }
+    }
+
+    /**
+     * Get the local WiFi IP address of the glasses device.
+     * Returns null if WiFi is not connected.
+     */
+    @Suppress("DEPRECATION")
+    private fun getLocalWifiIp(): String? {
+        return try {
+            val wifiManager = applicationContext.getSystemService(WIFI_SERVICE) as android.net.wifi.WifiManager
+            val ip = wifiManager.connectionInfo.ipAddress
+            if (ip == 0) null
+            else String.format("%d.%d.%d.%d", ip and 0xff, ip shr 8 and 0xff, ip shr 16 and 0xff, ip shr 24 and 0xff)
+        } catch (e: Exception) {
+            Log.e(GlassesApp.TAG, "Failed to get local WiFi IP", e)
+            null
         }
     }
 }

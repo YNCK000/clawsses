@@ -9,20 +9,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import com.clawsses.phone.glasses.ApkInstaller
 
@@ -31,6 +41,9 @@ fun SoftwareUpdateSection(
     installState: ApkInstaller.InstallState,
     sdkConnected: Boolean,
     onInstall: () -> Unit,
+    onInstallViaAdb: (String) -> Unit,
+    onDetectIp: () -> Unit,
+    detectedIp: String?,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -42,7 +55,7 @@ fun SoftwareUpdateSection(
 
         when (installState) {
             is ApkInstaller.InstallState.Idle ->
-                IdleContent(onInstall)
+                IdleContent(onInstall, onInstallViaAdb, onDetectIp, detectedIp)
 
             is ApkInstaller.InstallState.CheckingConnection ->
                 ProgressContent("Checking connection...", -1, null, onCancel = null)
@@ -82,26 +95,91 @@ private fun UnavailableContent() {
 }
 
 @Composable
-private fun IdleContent(onInstall: () -> Unit) {
+private fun IdleContent(
+    onInstall: () -> Unit, 
+    onInstallViaAdb: (String) -> Unit,
+    onDetectIp: () -> Unit,
+    detectedIp: String?,
+) {
+    var adbIp by remember { mutableStateOf("") }
+    var isDetecting by remember { mutableStateOf(false) }
+
+    // Auto-fill when IP is detected
+    LaunchedEffect(detectedIp) {
+        if (!detectedIp.isNullOrEmpty() && detectedIp != adbIp) {
+            adbIp = detectedIp
+            isDetecting = false
+        }
+    }
+
     Text(
         "Glasses App",
         style = MaterialTheme.typography.bodyLarge,
     )
     Text(
-        "Push the latest glasses app via Bluetooth",
+        "Install the glasses app to your Rokid glasses",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 
     Spacer(Modifier.height(12.dp))
 
+    // SDK install (WiFi P2P via CXR)
     Button(
         onClick = onInstall,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+        Icon(Icons.Default.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
         Spacer(Modifier.width(8.dp))
-        Text("Install to Glasses")
+        Text("Install via Bluetooth")
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    // ADB install (over WiFi)
+    Text(
+        "or install via ADB over WiFi",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+
+    Spacer(Modifier.height(8.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = adbIp,
+            onValueChange = { adbIp = it },
+            label = { Text("Glasses IP") },
+            placeholder = { Text("192.168.1.x") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(8.dp))
+        OutlinedButton(
+            onClick = {
+                isDetecting = true
+                onDetectIp()
+            },
+            enabled = !isDetecting,
+        ) {
+            Text(if (isDetecting) "..." else "Detect")
+        }
+    }
+
+    Spacer(Modifier.height(8.dp))
+
+    OutlinedButton(
+        onClick = { onInstallViaAdb(adbIp) },
+        enabled = adbIp.isNotBlank(),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.Default.Usb, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(8.dp))
+        Text("Install via ADB")
     }
 }
 

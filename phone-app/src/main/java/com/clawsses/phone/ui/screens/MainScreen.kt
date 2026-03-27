@@ -104,6 +104,7 @@ fun MainScreen() {
     val wakeOnStreamEnabled by glassesManager.wakeSignalManager.enabled.collectAsState()
     val ttsEnabled by ttsSettingsManager.isEnabled.collectAsState()
     val ttsVoiceName by ttsSettingsManager.selectedVoiceName.collectAsState()
+    var detectedIp by remember { mutableStateOf<String?>(null) }
 
     // Persist OpenClaw settings in SharedPreferences
     val prefs = remember { context.getSharedPreferences("clawsses", android.content.Context.MODE_PRIVATE) }
@@ -115,6 +116,16 @@ fun MainScreen() {
     }
     var openClawToken by remember {
         mutableStateOf(prefs.getString("openclaw_token", "") ?: "")
+    }
+    // Provider settings
+    var selectedProvider by remember {
+        mutableStateOf(prefs.getString("ai_provider", "openclaw") ?: "openclaw")
+    }
+    var openRouterApiKey by remember {
+        mutableStateOf(prefs.getString("openrouter_api_key", "") ?: "")
+    }
+    var openRouterModel by remember {
+        mutableStateOf(prefs.getString("openrouter_model", "") ?: "")
     }
     val phoneLoadingMore by openClawClient.isLoadingMoreHistory.collectAsState()
     var inputText by remember { mutableStateOf("") }
@@ -511,6 +522,12 @@ fun MainScreen() {
                             openClawClient.loadMoreHistory()
                         }
                     }
+                    "glasses_ip" -> {
+                        // Response to get_ip request - auto-fill the ADB IP field
+                        val ip = json.optString("ip", "")
+                        android.util.Log.d("MainScreen", "Detected glasses IP: $ip")
+                        detectedIp = ip.ifEmpty { null }
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("MainScreen", "Error parsing glasses message", e)
@@ -806,6 +823,22 @@ fun MainScreen() {
         exit = slideOutVertically(targetOffsetY = { it }),
     ) {
         SettingsScreen(
+            // Provider
+            selectedProvider = selectedProvider,
+            openRouterApiKey = openRouterApiKey,
+            openRouterModel = openRouterModel,
+            onProviderChange = { provider ->
+                selectedProvider = provider
+                prefs.edit().putString("ai_provider", provider).apply()
+            },
+            onOpenRouterApiKeyChange = { apiKey ->
+                openRouterApiKey = apiKey
+                prefs.edit().putString("openrouter_api_key", apiKey).apply()
+            },
+            onOpenRouterModelChange = { model ->
+                openRouterModel = model
+                prefs.edit().putString("openrouter_model", model).apply()
+            },
             // Server
             openClawHost = openClawHost,
             openClawPort = openClawPort,
@@ -852,6 +885,14 @@ fun MainScreen() {
             installState = installState,
             sdkConnected = sdkConnected,
             onInstall = { apkInstaller.installViaSdk() },
+            onInstallViaAdb = { ip ->
+                apkInstaller.configureAdb(ip)
+                apkInstaller.installViaAdb()
+            },
+            onDetectIp = {
+                glassesManager.sendRawMessage("""{"type":"get_ip"}""")
+            },
+            detectedIp = detectedIp,
             onCancelInstall = { apkInstaller.cancelInstallation() },
             // Voice
             voiceLanguageManager = voiceLanguageManager,

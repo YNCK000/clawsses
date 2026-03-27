@@ -305,10 +305,16 @@ fun HudScreen(
     }
 
     // Auto-scroll when position or trigger changes
-    LaunchedEffect(state.scrollPosition, state.scrollTrigger) {
+    // Key improvements:
+    // - Don't auto-scroll during streaming if user has scrolled up to read
+    // - Use smooth animated scroll instead of instant jumps
+    // - Don't force Int.MAX_VALUE offset — let Compose determine natural position
+    LaunchedEffect(state.scrollPosition, state.scrollTrigger, state.isScrolledToEnd) {
         val totalItems = state.messages.size
         if (totalItems > 0 && state.scrollPosition < totalItems) {
             val currentIndex = listState.firstVisibleItemIndex
+            val isStreaming = state.messages.lastOrNull()?.isStreaming == true
+
             if (state.scrollPosition < currentIndex) {
                 // Scrolling up: use pixel-based animation for smoothness
                 // (animateScrollToItem can jump when target items aren't composed yet)
@@ -324,16 +330,17 @@ fun HudScreen(
                 val scrollDistance = -(itemsToScroll * avgItemHeight)
                 listState.animateScrollBy(scrollDistance)
             } else if (state.scrollPosition == totalItems - 1) {
-                // Scrolling to last item: use a large offset so the bottom of the
-                // item aligns with the viewport bottom (Compose clamps internally).
-                // During streaming, use instant scroll — animated scroll gets
-                // cancelled and restarted on every chunk, causing visible flicker.
-                val isStreaming = state.messages.lastOrNull()?.isStreaming == true
-                if (isStreaming) {
-                    listState.scrollToItem(state.scrollPosition, Int.MAX_VALUE)
-                } else {
-                    listState.animateScrollToItem(state.scrollPosition, Int.MAX_VALUE)
+                // Scrolling to last item: only auto-scroll if user is already at bottom
+                // or if not streaming (user can read new messages in peace)
+                val shouldScroll = !isStreaming || state.isScrolledToEnd
+
+                if (shouldScroll) {
+                    // Use smooth animated scroll without Int.MAX_VALUE offset
+                    // This lets Compose figure out natural position instead of
+                    // forcing pixel-perfect bottom alignment
+                    listState.animateScrollToItem(state.scrollPosition)
                 }
+                // If user has scrolled up during streaming, don't yank them to bottom
             } else {
                 listState.animateScrollToItem(state.scrollPosition)
             }
@@ -351,11 +358,11 @@ fun HudScreen(
 
     // HUD position offset
     val hudHeight = when (state.hudPosition) {
-        HudPosition.FULL -> 1f
+        HudPosition.FULL -> 0.85f
         HudPosition.BOTTOM_HALF, HudPosition.TOP_HALF -> 0.5f
     }
     val hudAlignment = when (state.hudPosition) {
-        HudPosition.FULL -> Alignment.TopStart
+        HudPosition.FULL -> Alignment.Center
         HudPosition.BOTTOM_HALF -> Alignment.BottomStart
         HudPosition.TOP_HALF -> Alignment.TopStart
     }

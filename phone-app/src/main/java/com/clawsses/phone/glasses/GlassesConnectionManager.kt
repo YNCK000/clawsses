@@ -403,17 +403,19 @@ class GlassesConnectionManager(private val context: Context) {
     }
 
     /**
-     * Initialize WiFi P2P connection (required for APK uploads)
-     * Call this after Bluetooth is connected.
+     * Initialize WiFi P2P connection to glasses for APK transfer.
+     * Delegates to RokidSdkManager which uses initWifiP2P2(false, callback)
+     * to avoid the SDK's null device NPE crash.
+     *
+     * @return true if initialization was started, false if it failed
      */
     fun initWifiP2P(): Boolean {
-        if (!RokidSdkManager.isConnected()) {
-            Log.e(TAG, "Cannot init WiFi P2P - Bluetooth not connected")
-            return false
+        Log.d(TAG, "initWifiP2P: delegating to RokidSdkManager")
+        val result = RokidSdkManager.initWifiP2P()
+        if (!result) {
+            Log.w(TAG, "initWifiP2P: RokidSdkManager.initWifiP2P returned false")
         }
-
-        _connectionState.value = ConnectionState.InitializingWifiP2P
-        return RokidSdkManager.initWifiP2P()
+        return result
     }
 
     /**

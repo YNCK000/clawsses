@@ -31,6 +31,13 @@ import com.clawsses.phone.voice.VoiceRecognitionManager
 
 @Composable
 fun SettingsScreen(
+    // Provider
+    selectedProvider: String,
+    openRouterApiKey: String,
+    openRouterModel: String,
+    onProviderChange: (provider: String) -> Unit,
+    onOpenRouterApiKeyChange: (apiKey: String) -> Unit,
+    onOpenRouterModelChange: (model: String) -> Unit,
     // Server
     openClawHost: String,
     openClawPort: String,
@@ -60,6 +67,9 @@ fun SettingsScreen(
     installState: ApkInstaller.InstallState,
     sdkConnected: Boolean,
     onInstall: () -> Unit,
+    onInstallViaAdb: (String) -> Unit,
+    onDetectIp: () -> Unit,
+    detectedIp: String?,
     onCancelInstall: () -> Unit,
     // Voice
     voiceLanguageManager: VoiceLanguageManager,
@@ -91,6 +101,23 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding),
         ) {
+            // Provider section
+            item { SectionHeader("AI Provider") }
+            item {
+                ProviderSection(
+                    selectedProvider = selectedProvider,
+                    openRouterApiKey = openRouterApiKey,
+                    openRouterModel = openRouterModel,
+                    openClawHost = openClawHost,
+                    openClawPort = openClawPort,
+                    openClawToken = openClawToken,
+                    onProviderChange = onProviderChange,
+                    onOpenRouterApiKeyChange = onOpenRouterApiKeyChange,
+                    onOpenRouterModelChange = onOpenRouterModelChange,
+                    onApplyGatewaySettings = onApplyServerSettings,
+                )
+            }
+
             // Server section
             item { SectionHeader("Server") }
             item {
@@ -134,6 +161,9 @@ fun SettingsScreen(
                     installState = installState,
                     sdkConnected = sdkConnected,
                     onInstall = onInstall,
+                    onInstallViaAdb = onInstallViaAdb,
+                    onDetectIp = onDetectIp,
+                    detectedIp = detectedIp,
                     onCancel = onCancelInstall,
                 )
             }

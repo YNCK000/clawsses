@@ -610,29 +610,51 @@ object RokidSdkManager {
     // ============== WiFi P2P Methods ==============
 
     /**
-     * Initialize WiFi P2P connection for data transfer (APK uploads, etc.)
-     * Call this after Bluetooth is connected.
+     * Initialize WiFi P2P for APK transfer to glasses.
+     *
+     * Uses initWifiP2P2(false, callback) — the `false` parameter means "don't
+     * auto-connect", which avoids the SDK's WifiController NPE crash path where
+     * it tries to read WifiP2pDevice.deviceAddress on a null device object.
+     * The caller can trigger connection explicitly once the device is available.
+     *
+     * Requires WiFi to be enabled on the phone. Returns true if initialization
+     * was started (not necessarily connected yet — wait for onWifiP2PConnected).
      */
     fun initWifiP2P(): Boolean {
         if (!isInitialized) {
-            Log.e(TAG, "SDK not initialized")
+            Log.e(TAG, "initWifiP2P: SDK not initialized")
             return false
         }
 
         if (!isBluetoothConnectedState) {
-            Log.e(TAG, "Bluetooth not connected - connect via Bluetooth first")
+            Log.e(TAG, "initWifiP2P: Bluetooth not connected")
+            return false
+        }
+
+        // Check WiFi is enabled — WiFi P2P requires it
+        val wifiManager = appContext?.getSystemService(Context.WIFI_SERVICE) as? android.net.wifi.WifiManager
+        if (wifiManager?.isWifiEnabled != true) {
+            Log.e(TAG, "initWifiP2P: WiFi is not enabled on the phone")
             return false
         }
 
         return try {
-            // initWifiP2P2(connectP2p=true) tells the SDK to auto-connect WiFi
-            // when the glasses report P2P device availability.
-            // Plain initWifiP2P() sets connectP2p=false and skips the connection.
-            val status = cxrApi?.initWifiP2P2(true, wifiP2PCallback)
-            Log.d(TAG, "WiFi P2P initialization status: $status")
-            status == ValueUtil.CxrStatus.REQUEST_SUCCEED
+            Log.i(TAG, "=== initWifiP2P === Calling initWifiP2P2(false, callback)")
+            // false = don't auto-connect, avoids NPE on null WifiP2pDevice
+            cxrApi?.initWifiP2P2(false, wifiP2PCallback)
+            Log.i(TAG, "initWifiP2P2(false) called successfully")
+            true
+        } catch (e: NullPointerException) {
+            // Catch the known SDK NPE: WifiController tries to read
+            // WifiP2pDevice.deviceAddress on null device
+            Log.e(TAG, "initWifiP2P: SDK NPE crash (WifiController null device) — WiFi P2P unavailable", e)
+            isWifiP2PConnectedState = false
+            onWifiP2PFailed?.invoke()
+            false
         } catch (e: Exception) {
-            Log.e(TAG, "Error initializing WiFi P2P", e)
+            Log.e(TAG, "initWifiP2P: unexpected error", e)
+            isWifiP2PConnectedState = false
+            onWifiP2PFailed?.invoke()
             false
         }
     }
