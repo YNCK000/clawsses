@@ -56,6 +56,7 @@ class OpenClawClient(
     var onChatMessage: ((ChatMessage) -> Unit)? = null
     var onChatHistory: ((List<ChatMessage>) -> Unit)? = null
     var onAgentThinking: ((AgentThinking) -> Unit)? = null
+    var onThinkingContent: ((String, String) -> Unit)? = null  // (id, thinking text)
     var onChatStream: ((ChatStream) -> Unit)? = null
     var onChatStreamEnd: ((ChatStreamEnd) -> Unit)? = null
     var onSessionList: ((SessionListUpdate) -> Unit)? = null
@@ -596,8 +597,23 @@ class OpenClawClient(
                 handleChatEvent(payload)
             }
             OpenClawEvents.AGENT -> {
-                // Lower-level agent events (tool use, lifecycle)
-                Log.d(TAG, "Agent event: ${payload?.toString()?.take(200)}")
+                // Agent events can contain thinking/reasoning content
+                // Payload structure: { runId, stream: "thinking"|"assistant", data: { thinking?, text?, delta? }, ... }
+                val stream = payload?.get("stream")?.asString
+                val data = payload?.getAsJsonObject("data")
+                val runId = payload?.get("runId")?.asString
+                
+                if (stream == "thinking" && data != null) {
+                    // Thinking content from the agent
+                    val thinkingText = data.get("thinking")?.asString ?: data.get("text")?.asString ?: ""
+                    val msgId = activeMessageId ?: runId ?: ""
+                    if (thinkingText.isNotEmpty()) {
+                        Log.d(TAG, "Thinking content: ${thinkingText.take(100)}...")
+                        onThinkingContent?.invoke(msgId, thinkingText)
+                    }
+                } else {
+                    Log.d(TAG, "Agent event: ${payload?.toString()?.take(200)}")
+                }
             }
             "tick", OpenClawEvents.HEARTBEAT -> {
                 // Keep-alive, no action needed

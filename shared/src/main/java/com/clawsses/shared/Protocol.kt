@@ -170,6 +170,23 @@ data class ChatStreamEnd(
 }
 
 /**
+ * Thinking/reasoning content from the agent.
+ * Glasses should display this temporarily while the agent is reasoning.
+ * When the final answer starts streaming, this content should be cleared.
+ */
+data class ChatThinking(
+    @SerializedName("type") val type: String = "chat_thinking",
+    @SerializedName("id") val id: String,
+    @SerializedName("thinking") val thinking: String
+) {
+    fun toJson(): String = gson.toJson(this)
+
+    companion object {
+        fun fromJson(json: String): ChatThinking = gson.fromJson(json, ChatThinking::class.java)
+    }
+}
+
+/**
  * OpenClaw connection state update.
  */
 data class ConnectionUpdate(

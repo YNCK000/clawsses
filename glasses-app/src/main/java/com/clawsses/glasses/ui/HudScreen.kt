@@ -192,6 +192,8 @@ data class ChatHudState(
     val photoThumbnails: List<Bitmap> = emptyList(),
     val isConnected: Boolean = false,
     val agentState: AgentState = AgentState.IDLE,
+    // Thinking/reasoning content from the agent (shown temporarily while reasoning)
+    val thinkingText: String = "",
     val menuBarIndex: Int = 0,
     val hudPosition: HudPosition = HudPosition.FULL,
     val displaySize: HudDisplaySize = HudDisplaySize.NORMAL,
@@ -432,6 +434,7 @@ fun HudScreen(
                 ChatContentArea(
                     messages = state.messages,
                     agentState = state.agentState,
+                    thinkingText = state.thinkingText,
                     listState = listState,
                     fontSize = fontSize,
                     fontFamily = monoFontFamily,
@@ -700,6 +703,7 @@ private fun TopBar(
 private fun ChatContentArea(
     messages: List<DisplayMessage>,
     agentState: AgentState,
+    thinkingText: String = "",
     listState: androidx.compose.foundation.lazy.LazyListState,
     fontSize: androidx.compose.ui.unit.TextUnit,
     fontFamily: FontFamily,
@@ -782,6 +786,7 @@ private fun ChatContentArea(
                 if (agentState == AgentState.THINKING) {
                     item {
                         ThinkingIndicator(
+                            thinkingText = thinkingText,
                             fontSize = fontSize,
                             fontFamily = fontFamily
                         )
@@ -872,29 +877,45 @@ private fun ChatMessageItem(
 
 @Composable
 private fun ThinkingIndicator(
+    thinkingText: String = "",
     fontSize: androidx.compose.ui.unit.TextUnit,
     fontFamily: FontFamily
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "thinking")
-    val alpha by infiniteTransition.animateFloat(
+    val pulseAlpha by infiniteTransition.animateFloat(
         initialValue = 0.3f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(animation = tween(600)),
         label = "pulse"
     )
 
-    Box(
-        modifier = Modifier
-            .padding(end = 16.dp)
-            .graphicsLayer { this.alpha = alpha }
+    Column(
+        modifier = Modifier.padding(end = 16.dp)
     ) {
-        Text(
-            text = "...",
-            color = HudColors.cyan,
-            fontSize = (fontSize.value + 2).sp,
-            fontFamily = fontFamily,
-            fontWeight = FontWeight.Bold
-        )
+        // Show thinking text if available
+        if (thinkingText.isNotEmpty()) {
+            Text(
+                text = thinkingText,
+                color = HudColors.cyan.copy(alpha = 0.5f),
+                fontSize = (fontSize.value - 2).sp,
+                fontFamily = fontFamily,
+                maxLines = 3,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = 2.dp)
+            )
+        }
+        // Pulsing dots indicator
+        Box(
+            modifier = Modifier.graphicsLayer { alpha = pulseAlpha }
+        ) {
+            Text(
+                text = if (thinkingText.isEmpty()) "..." else "thinking...",
+                color = HudColors.cyan,
+                fontSize = (fontSize.value - 1).sp,
+                fontFamily = fontFamily,
+                fontWeight = FontWeight.Bold
+            )
+        }
     }
 }
 

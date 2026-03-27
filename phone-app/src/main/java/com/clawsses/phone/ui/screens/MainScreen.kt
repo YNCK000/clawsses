@@ -68,6 +68,7 @@ import com.clawsses.phone.voice.VoiceCommandHandler
 import com.clawsses.phone.voice.VoiceLanguageManager
 import com.clawsses.phone.voice.VoiceRecognitionManager
 import com.clawsses.shared.ChatMessage
+import com.clawsses.shared.ChatThinking
 import com.clawsses.shared.ConnectionUpdate
 import com.clawsses.shared.SessionInfo
 import com.clawsses.shared.TtsState
@@ -270,6 +271,11 @@ fun MainScreen() {
             // Agent is about to start streaming — notify wake manager
             glassesManager.notifyStreamStart(msg.id)
             glassesManager.sendRawMessage(msg.toJson(), isStreamContent = true)
+        }
+        openClawClient.onThinkingContent = { id, thinking ->
+            // Forward thinking/reasoning content to glasses for display
+            val thinkingMsg = ChatThinking(id = id, thinking = thinking)
+            glassesManager.sendRawMessage(thinkingMsg.toJson(), isStreamContent = true)
         }
         openClawClient.onChatStream = { msg ->
             // Streaming content — mark as such for wake signal handling

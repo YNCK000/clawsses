@@ -1239,8 +1239,18 @@ class HudActivity : ComponentActivity() {
                 "agent_thinking" -> {
                     // Agent acknowledged request, waiting for first chunk
                     val current = hudState.value
-                    hudState.value = current.copy(agentState = AgentState.THINKING)
+                    hudState.value = current.copy(agentState = AgentState.THINKING, thinkingText = "")
                     Log.d(GlassesApp.TAG, "Agent thinking")
+                }
+
+                "chat_thinking" -> {
+                    // Thinking/reasoning content from the agent
+                    val thinking = msg.optString("thinking", "")
+                    if (thinking.isNotEmpty()) {
+                        val current = hudState.value
+                        hudState.value = current.copy(thinkingText = thinking)
+                        Log.d(GlassesApp.TAG, "Thinking: ${thinking.take(80)}")
+                    }
                 }
 
                 "chat_stream" -> {
@@ -1248,7 +1258,12 @@ class HudActivity : ComponentActivity() {
                     val id = msg.optString("id", "")
                     val chunk = msg.optString("chunk", "")
 
+                    // Clear thinking text when streaming starts
                     val current = hudState.value
+                    if (current.thinkingText.isNotEmpty()) {
+                        hudState.value = current.copy(thinkingText = "")
+                    }
+
                     val messages = current.messages.toMutableList()
 
                     val existingIndex = messages.indexOfFirst { it.id == id }
@@ -1300,7 +1315,8 @@ class HudActivity : ComponentActivity() {
 
                     hudState.value = current.copy(
                         messages = messages,
-                        agentState = AgentState.IDLE
+                        agentState = AgentState.IDLE,
+                        thinkingText = ""
                     )
 
                     Log.d(GlassesApp.TAG, "Stream ended for $id")
