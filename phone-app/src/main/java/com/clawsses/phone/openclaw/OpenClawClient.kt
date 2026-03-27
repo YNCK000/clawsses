@@ -263,11 +263,11 @@ class OpenClawClient(
                         val obj = element.asJsonObject
                         sessions.add(SessionInfo(
                             key = obj.get("key")?.asString ?: "",
-                            displayName = obj.get("displayName")?.asString,
-                            label = obj.get("label")?.asString,
-                            derivedTitle = obj.get("derivedTitle")?.asString,
-                            updatedAt = obj.get("updatedAt")?.asLong,
-                            kind = obj.get("kind")?.asString
+                            displayName = obj.get("displayName")?.takeIf { !it.isJsonNull }?.asString,
+                            label = obj.get("label")?.takeIf { !it.isJsonNull }?.asString,
+                            derivedTitle = obj.get("derivedTitle")?.takeIf { !it.isJsonNull }?.asString,
+                            updatedAt = obj.get("updatedAt")?.takeIf { !it.isJsonNull }?.asLong,
+                            kind = obj.get("kind")?.takeIf { !it.isJsonNull }?.asString
                         ))
                     }
                     _sessionList.value = sessions
