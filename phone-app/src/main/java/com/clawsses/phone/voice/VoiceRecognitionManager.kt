@@ -35,6 +35,15 @@ class VoiceRecognitionManager(private val context: Context) {
     }
 
     /**
+     * Which cloud client is currently active (to avoid TOCTOU races in stopListening).
+     */
+    enum class ClientActive {
+        NONE,
+        OPENAI,
+        OPENROUTER
+    }
+
+    /**
      * Reason why we're using fallback instead of OpenAI.
      */
     enum class FallbackReason {
@@ -60,6 +69,8 @@ class VoiceRecognitionManager(private val context: Context) {
 
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
+
+    private var activeClient = ClientActive.NONE
 
     private val _lastError = MutableStateFlow<String?>(null)
     val lastError: StateFlow<String?> = _lastError.asStateFlow()
@@ -231,6 +242,7 @@ class VoiceRecognitionManager(private val context: Context) {
                 Log.i(TAG, "Starting OpenAI voice recognition")
                 _activeMode.value = RecognitionMode.OPENAI
                 _fallbackReason.value = FallbackReason.NONE
+                activeClient = ClientActive.OPENAI
 
                 openAIClient.startListening(
                     apiKey = apiKey,
@@ -292,6 +304,7 @@ class VoiceRecognitionManager(private val context: Context) {
                 Log.i(TAG, "Starting OpenRouter voice recognition with model: $model")
                 _activeMode.value = RecognitionMode.OPENAI  // Reuse OPENAI state for cloud STT
                 _fallbackReason.value = FallbackReason.NONE
+                activeClient = ClientActive.OPENROUTER
 
                 openRouterClient.startListening(
                     apiKey = apiKey,
@@ -398,24 +411,23 @@ class VoiceRecognitionManager(private val context: Context) {
      * Stop any active voice recognition.
      */
     fun stopListening() {
-        when (_activeMode.value) {
-            RecognitionMode.OPENAI -> {
-                // Could be OpenAI or OpenRouter - check both
-                if (openAIClient.isListening.value) {
-                    openAIClient.stopListening()
-                } else {
-                    openRouterClient.stopListening()
+        when (activeClient) {
+            ClientActive.OPENAI -> {
+                openAIClient.stopListening()
+            }
+            ClientActive.OPENROUTER -> {
+                openRouterClient.stopListening()
+            }
+            ClientActive.NONE -> {
+                // Check mode for fallback
+                if (_activeMode.value == RecognitionMode.FALLBACK) {
+                    fallbackHandler.stopListening()
                 }
-            }
-            RecognitionMode.FALLBACK -> {
-                fallbackHandler.stopListening()
-            }
-            RecognitionMode.NONE -> {
-                // Nothing to stop
             }
         }
         _isListening.value = false
         _activeMode.value = RecognitionMode.NONE
+        activeClient = ClientActive.NONE
     }
 
     /**

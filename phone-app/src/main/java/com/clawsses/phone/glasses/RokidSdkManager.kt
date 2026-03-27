@@ -14,6 +14,8 @@ import com.rokid.cxr.client.extend.listeners.BrightnessUpdateListener
 import com.rokid.cxr.client.extend.listeners.CustomCmdListener
 import com.rokid.cxr.client.utils.ValueUtil
 import android.util.Base64
+import android.os.Handler
+import android.os.Looper
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
@@ -58,6 +60,21 @@ object RokidSdkManager {
     // Last known brightness from glasses (tracked via BrightnessUpdateListener)
     // -1 = unknown (not yet received from glasses), don't auto-apply until we know user's preference
     private var lastKnownBrightness: Int = -1
+
+    // Brightness fallback timer — if no BrightnessUpdateListener callback within 5s of BT connect,
+    // default to brightness 15 so the display is never permanently dark
+    private val brightnessHandler = Handler(Looper.getMainLooper())
+    private val brightnessFallbackRunnable = Runnable {
+        if (lastKnownBrightness < 0) {
+            Log.w(TAG, "Brightness fallback triggered — no callback within 5s, defaulting to 15")
+            lastKnownBrightness = 15
+            try {
+                cxrApi?.setGlassBrightness(15)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to set fallback brightness", e)
+            }
+        }
+    }
 
     // SN auto-generation: first attempt fails, we read the SN and retry
     private var snAutoRetryInProgress = false
@@ -137,11 +154,15 @@ object RokidSdkManager {
             isBluetoothConnectedState = true
             pendingConnect = false
             snAutoRetryInProgress = false
+            // Start brightness fallback timer — if no BrightnessUpdateListener callback
+            // within 5 seconds, default to brightness 15 so display never stays dark
+            brightnessHandler.postDelayed(brightnessFallbackRunnable, 5000L)
             onGlassesConnected?.invoke()
         }
 
         override fun onDisconnected() {
             Log.i(TAG, "=== onDisconnected === Bluetooth disconnected from glasses")
+            brightnessHandler.removeCallbacks(brightnessFallbackRunnable)
             isBluetoothConnectedState = false
             onGlassesDisconnected?.invoke()
         }
@@ -316,6 +337,7 @@ object RokidSdkManager {
             cxrApi?.setBrightnessUpdateListener(object : BrightnessUpdateListener {
                 override fun onBrightnessUpdated(brightness: Int) {
                     Log.d(TAG, "Glasses brightness updated: $brightness")
+                    brightnessHandler.removeCallbacks(brightnessFallbackRunnable)
                     lastKnownBrightness = brightness
                 }
             })

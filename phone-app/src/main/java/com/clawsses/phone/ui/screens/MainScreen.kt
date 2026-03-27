@@ -709,6 +709,7 @@ fun MainScreen() {
                 ) {
                     // Icon color indicates mode when listening:
                     // Red = listening, with tint for OpenAI (blue) vs device (red)
+                    val provider = voiceRecognitionManager.getVoiceProvider()
                     val iconTint = when {
                         !isListening -> MaterialTheme.colorScheme.onSurface
                         voiceMode == VoiceRecognitionManager.RecognitionMode.OPENAI -> Color(0xFF2196F3)  // Blue for OpenAI
@@ -718,6 +719,7 @@ fun MainScreen() {
                         if (isListening) Icons.Default.MicOff else Icons.Default.Mic,
                         contentDescription = when {
                             !isListening -> "Voice input"
+                            voiceMode == VoiceRecognitionManager.RecognitionMode.OPENAI && provider == "openrouter" -> "Listening (OpenRouter)"
                             voiceMode == VoiceRecognitionManager.RecognitionMode.OPENAI -> "Listening (OpenAI)"
                             else -> "Listening (Device)"
                         },

@@ -72,8 +72,6 @@ private data class VoiceModel(val id: String, val displayName: String)
 private val OPENROUTER_VOICE_MODELS = listOf(
     VoiceModel("openai/whisper-large-v3", "Whisper Large v3"),
     VoiceModel("openai/whisper-1", "Whisper"),
-    VoiceModel("google/gemini-2.0-flash-001", "Gemini 2.0 Flash"),
-    VoiceModel("google/gemini-2.5-flash-preview", "Gemini 2.5 Flash"),
 )
 
 @Composable
@@ -159,7 +157,8 @@ private fun VoiceProviderSettings(
 ) {
     // Current provider state
     var selectedProvider by remember { mutableStateOf(voiceRecognitionManager.getVoiceProvider()) }
-    var apiKeyVisible by remember { mutableStateOf(false) }
+    var openAiKeyVisible by remember { mutableStateOf(false) }
+    var openRouterKeyVisible by remember { mutableStateOf(false) }
 
     // OpenAI state
     var openAiKey by remember { mutableStateOf(voiceRecognitionManager.getOpenAIApiKey()) }
@@ -278,14 +277,14 @@ private fun VoiceProviderSettings(
                         label = { Text("OpenAI API Key") },
                         placeholder = { Text("sk-...") },
                         singleLine = true,
-                        visualTransformation = if (apiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        visualTransformation = if (openAiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
                             Row {
-                                IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                                IconButton(onClick = { openAiKeyVisible = !openAiKeyVisible }) {
                                     Icon(
-                                        if (apiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = if (apiKeyVisible) "Hide" else "Show",
+                                        if (openAiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (openAiKeyVisible) "Hide" else "Show",
                                     )
                                 }
                                 if (openAiKey.isNotEmpty()) {
@@ -350,14 +349,14 @@ private fun VoiceProviderSettings(
                         label = { Text("OpenRouter API Key") },
                         placeholder = { Text("sk-or-...") },
                         singleLine = true,
-                        visualTransformation = if (apiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        visualTransformation = if (openRouterKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         trailingIcon = {
                             Row {
-                                IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                                IconButton(onClick = { openRouterKeyVisible = !openRouterKeyVisible }) {
                                     Icon(
-                                        if (apiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = if (apiKeyVisible) "Hide" else "Show",
+                                        if (openRouterKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (openRouterKeyVisible) "Hide" else "Show",
                                     )
                                 }
                                 if (openRouterKey.isNotEmpty()) {

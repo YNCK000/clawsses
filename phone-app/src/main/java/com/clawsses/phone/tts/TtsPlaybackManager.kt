@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
@@ -81,7 +82,9 @@ class TtsPlaybackManager(
                         val audioBytes = tempFile.readBytes()
                         val audioBase64 = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
                         val ttsMessage = TtsAudio(audioBase64 = audioBase64, text = text).toJson()
-                        sendToGlasses.invoke(ttsMessage)
+                        withContext(Dispatchers.Main) {
+                            sendToGlasses.invoke(ttsMessage)
+                        }
                         Log.d(TAG, "TTS audio sent to glasses (${audioBytes.size} bytes)")
                         // Delete temp file after sending
                         tempFile.delete()
