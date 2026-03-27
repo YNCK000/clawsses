@@ -89,7 +89,14 @@ fun MainScreen() {
     val apkInstaller = remember { ApkInstaller(context) }
     val ttsSettingsManager = remember { TtsSettingsManager(context) }
     val elevenLabsClient = remember { ElevenLabsClient() }
-    val ttsPlaybackManager = remember { TtsPlaybackManager(context, elevenLabsClient, ttsSettingsManager) }
+    val ttsPlaybackManager = remember {
+        TtsPlaybackManager(
+            context = context,
+            client = elevenLabsClient,
+            settings = ttsSettingsManager,
+            sendToGlasses = { message -> glassesManager.sendRawMessage(message) }
+        )
+    }
 
     // State
     val glassesState by glassesManager.connectionState.collectAsState()
@@ -117,16 +124,6 @@ fun MainScreen() {
     }
     var openClawToken by remember {
         mutableStateOf(prefs.getString("openclaw_token", "") ?: "")
-    }
-    // Provider settings
-    var selectedProvider by remember {
-        mutableStateOf(prefs.getString("ai_provider", "openclaw") ?: "openclaw")
-    }
-    var openRouterApiKey by remember {
-        mutableStateOf(prefs.getString("openrouter_api_key", "") ?: "")
-    }
-    var openRouterModel by remember {
-        mutableStateOf(prefs.getString("openrouter_model", "") ?: "")
     }
     val phoneLoadingMore by openClawClient.isLoadingMoreHistory.collectAsState()
     var inputText by remember { mutableStateOf("") }
@@ -829,22 +826,6 @@ fun MainScreen() {
         exit = slideOutVertically(targetOffsetY = { it }),
     ) {
         SettingsScreen(
-            // Provider
-            selectedProvider = selectedProvider,
-            openRouterApiKey = openRouterApiKey,
-            openRouterModel = openRouterModel,
-            onProviderChange = { provider ->
-                selectedProvider = provider
-                prefs.edit().putString("ai_provider", provider).apply()
-            },
-            onOpenRouterApiKeyChange = { apiKey ->
-                openRouterApiKey = apiKey
-                prefs.edit().putString("openrouter_api_key", apiKey).apply()
-            },
-            onOpenRouterModelChange = { model ->
-                openRouterModel = model
-                prefs.edit().putString("openrouter_model", model).apply()
-            },
             // Server
             openClawHost = openClawHost,
             openClawPort = openClawPort,

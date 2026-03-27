@@ -2,7 +2,9 @@ package com.clawsses.phone.tts
 
 import android.content.Context
 import android.media.MediaPlayer
+import android.util.Base64
 import android.util.Log
+import com.clawsses.shared.TtsAudio
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -11,13 +13,19 @@ import java.io.File
 import java.io.FileOutputStream
 
 /**
- * Manages TTS audio playback using MediaPlayer.
- * New messages interrupt current playback.
+ * Manages TTS audio playback.
+ * Can play on phone speaker or send to glasses for playback.
+ *
+ * @param context Android context
+ * @param client ElevenLabs client for TTS synthesis
+ * @param settings TTS settings (API key, voice, enabled state)
+ * @param sendToGlasses Optional callback to send audio to glasses instead of playing on phone
  */
 class TtsPlaybackManager(
     private val context: Context,
     private val client: ElevenLabsClient,
-    private val settings: TtsSettingsManager
+    private val settings: TtsSettingsManager,
+    private val sendToGlasses: ((String) -> Unit)? = null
 ) {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var mediaPlayer: MediaPlayer? = null
@@ -68,9 +76,20 @@ class TtsPlaybackManager(
 
                     Log.d(TAG, "Audio saved to temp file: ${tempFile.absolutePath}")
 
-                    // Play on main thread
-                    launch(Dispatchers.Main) {
-                        playAudioFile(tempFile)
+                    // Send to glasses if callback provided, otherwise play on phone
+                    if (sendToGlasses != null) {
+                        val audioBytes = tempFile.readBytes()
+                        val audioBase64 = Base64.encodeToString(audioBytes, Base64.NO_WRAP)
+                        val ttsMessage = TtsAudio(audioBase64 = audioBase64, text = text).toJson()
+                        sendToGlasses.invoke(ttsMessage)
+                        Log.d(TAG, "TTS audio sent to glasses (${audioBytes.size} bytes)")
+                        // Delete temp file after sending
+                        tempFile.delete()
+                    } else {
+                        // Play on main thread
+                        launch(Dispatchers.Main) {
+                            playAudioFile(tempFile)
+                        }
                     }
                 }.onFailure { error ->
                     Log.e(TAG, "TTS synthesis failed", error)

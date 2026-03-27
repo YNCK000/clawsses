@@ -17,8 +17,12 @@ class VoiceRecognitionManager(private val context: Context) {
     companion object {
         private const val TAG = "VoiceRecognitionMgr"
         private const val PREFS_NAME = "clawsses"
+        private const val KEY_VOICE_PROVIDER = "voice_provider"
         private const val KEY_OPENAI_API_KEY = "openai_api_key"
         private const val KEY_OPENAI_VOICE_ENABLED = "openai_voice_enabled"
+        private const val KEY_OPENROUTER_API_KEY = "openrouter_api_key"
+        private const val KEY_OPENROUTER_MODEL = "openrouter_model"
+        private const val KEY_OPENROUTER_VOICE_ENABLED = "openrouter_voice_enabled"
     }
 
     /**
@@ -45,6 +49,7 @@ class VoiceRecognitionManager(private val context: Context) {
     private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     private val openAIClient = OpenAIRealtimeClient()
+    private val openRouterClient = OpenRouterVoiceClient()
     private val fallbackHandler = VoiceCommandHandler(context)
 
     private val _activeMode = MutableStateFlow(RecognitionMode.NONE)
@@ -106,7 +111,77 @@ class VoiceRecognitionManager(private val context: Context) {
     }
 
     /**
-     * Start voice recognition. Will use OpenAI if available, otherwise falls back to Android.
+     * Get the voice provider preference.
+     */
+    fun getVoiceProvider(): String {
+        return prefs.getString(KEY_VOICE_PROVIDER, "device") ?: "device"
+    }
+
+    /**
+     * Set the voice provider preference (device, openai, openrouter).
+     */
+    fun setVoiceProvider(provider: String) {
+        prefs.edit().putString(KEY_VOICE_PROVIDER, provider).apply()
+        Log.i(TAG, "Voice provider set to: $provider")
+    }
+
+    /**
+     * Check if OpenRouter voice recognition is available and configured.
+     */
+    fun isOpenRouterAvailable(): Boolean {
+        val apiKey = getOpenRouterApiKey()
+        val model = getOpenRouterModel()
+        val enabled = isOpenRouterVoiceEnabled()
+        return apiKey.isNotEmpty() && model.isNotEmpty() && enabled
+    }
+
+    /**
+     * Get the stored OpenRouter API key.
+     */
+    fun getOpenRouterApiKey(): String {
+        return prefs.getString(KEY_OPENROUTER_API_KEY, "") ?: ""
+    }
+
+    /**
+     * Store the OpenRouter API key.
+     */
+    fun setOpenRouterApiKey(apiKey: String) {
+        prefs.edit().putString(KEY_OPENROUTER_API_KEY, apiKey).apply()
+        Log.i(TAG, "OpenRouter API key ${if (apiKey.isNotEmpty()) "saved" else "cleared"}")
+    }
+
+    /**
+     * Get the OpenRouter model for voice recognition.
+     */
+    fun getOpenRouterModel(): String {
+        return prefs.getString(KEY_OPENROUTER_MODEL, "openai/whisper-large-v3") ?: "openai/whisper-large-v3"
+    }
+
+    /**
+     * Set the OpenRouter model for voice recognition.
+     */
+    fun setOpenRouterModel(model: String) {
+        prefs.edit().putString(KEY_OPENROUTER_MODEL, model).apply()
+        Log.i(TAG, "OpenRouter model set to: $model")
+    }
+
+    /**
+     * Check if OpenRouter voice recognition is enabled.
+     */
+    fun isOpenRouterVoiceEnabled(): Boolean {
+        return prefs.getBoolean(KEY_OPENROUTER_VOICE_ENABLED, false)
+    }
+
+    /**
+     * Enable or disable OpenRouter voice recognition.
+     */
+    fun setOpenRouterVoiceEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_OPENROUTER_VOICE_ENABLED, enabled).apply()
+        Log.i(TAG, "OpenRouter voice recognition ${if (enabled) "enabled" else "disabled"}")
+    }
+
+    /**
+     * Start voice recognition. Will use selected provider (OpenAI, OpenRouter) or fallback to Android.
      *
      * @param languageTag BCP-47 language tag (e.g., "en-US", "nl-NL")
      * @param onResult Callback for the final result
@@ -123,59 +198,137 @@ class VoiceRecognitionManager(private val context: Context) {
         _isListening.value = true
         _lastError.value = null
 
-        val apiKey = getOpenAIApiKey()
-        val openAIEnabled = isOpenAIVoiceEnabled()
+        val provider = getVoiceProvider()
 
-        if (apiKey.isEmpty()) {
-            Log.i(TAG, "No OpenAI API key, using fallback")
-            _fallbackReason.value = FallbackReason.NO_API_KEY
-            startFallbackRecognition(languageTag, onResult)
-            return
-        }
-
-        if (!openAIEnabled) {
-            Log.i(TAG, "OpenAI voice disabled, using fallback")
-            _fallbackReason.value = FallbackReason.DISABLED
-            startFallbackRecognition(languageTag, onResult)
-            return
-        }
-
-        // Try OpenAI first
-        Log.i(TAG, "Starting OpenAI voice recognition")
-        _activeMode.value = RecognitionMode.OPENAI
-        _fallbackReason.value = FallbackReason.NONE
-
-        openAIClient.startListening(
-            apiKey = apiKey,
-            languageTag = languageTag,
-            onPartial = { partialText ->
-                onPartialResult?.invoke(partialText)
-            },
-            onSpeechStopped = {
-                onSpeechStopped?.invoke()
-            },
-            onFinal = { finalText ->
-                Log.i(TAG, "OpenAI final result: ${finalText.take(100)}")
-                _isListening.value = false
-                _activeMode.value = RecognitionMode.NONE
-
-                val result = if (finalText.isEmpty()) {
-                    VoiceCommandHandler.VoiceResult.Text("")
-                } else {
-                    // Apply the same word mappings as fallback
-                    processText(finalText)
-                }
-                onResult(result)
-            },
-            onError = { errorMessage ->
-                Log.w(TAG, "OpenAI error: $errorMessage, falling back to Android")
-                _lastError.value = errorMessage
-                _fallbackReason.value = FallbackReason.API_ERROR
-
-                // Fall back to Android speech recognition
+        // Check which provider to use
+        when (provider) {
+            "device" -> {
+                Log.i(TAG, "Using device speech recognition")
+                _activeMode.value = RecognitionMode.FALLBACK
+                _fallbackReason.value = FallbackReason.PREFERENCE
                 startFallbackRecognition(languageTag, onResult)
+                return
             }
-        )
+            "openai" -> {
+                val apiKey = getOpenAIApiKey()
+                val openAIEnabled = isOpenAIVoiceEnabled()
+
+                if (apiKey.isEmpty()) {
+                    Log.i(TAG, "No OpenAI API key, using fallback")
+                    _fallbackReason.value = FallbackReason.NO_API_KEY
+                    startFallbackRecognition(languageTag, onResult)
+                    return
+                }
+
+                if (!openAIEnabled) {
+                    Log.i(TAG, "OpenAI voice disabled, using fallback")
+                    _fallbackReason.value = FallbackReason.DISABLED
+                    startFallbackRecognition(languageTag, onResult)
+                    return
+                }
+
+                // Use OpenAI
+                Log.i(TAG, "Starting OpenAI voice recognition")
+                _activeMode.value = RecognitionMode.OPENAI
+                _fallbackReason.value = FallbackReason.NONE
+
+                openAIClient.startListening(
+                    apiKey = apiKey,
+                    languageTag = languageTag,
+                    onPartial = { partialText ->
+                        onPartialResult?.invoke(partialText)
+                    },
+                    onSpeechStopped = {
+                        onSpeechStopped?.invoke()
+                    },
+                    onFinal = { finalText ->
+                        Log.i(TAG, "OpenAI final result: ${finalText.take(100)}")
+                        _isListening.value = false
+                        _activeMode.value = RecognitionMode.NONE
+
+                        val result = if (finalText.isEmpty()) {
+                            VoiceCommandHandler.VoiceResult.Text("")
+                        } else {
+                            processText(finalText)
+                        }
+                        onResult(result)
+                    },
+                    onError = { errorMessage ->
+                        Log.w(TAG, "OpenAI error: $errorMessage, falling back to Android")
+                        _lastError.value = errorMessage
+                        _fallbackReason.value = FallbackReason.API_ERROR
+                        startFallbackRecognition(languageTag, onResult)
+                    }
+                )
+                return
+            }
+            "openrouter" -> {
+                val apiKey = getOpenRouterApiKey()
+                val model = getOpenRouterModel()
+                val openRouterEnabled = isOpenRouterVoiceEnabled()
+
+                if (apiKey.isEmpty()) {
+                    Log.i(TAG, "No OpenRouter API key, using fallback")
+                    _fallbackReason.value = FallbackReason.NO_API_KEY
+                    startFallbackRecognition(languageTag, onResult)
+                    return
+                }
+
+                if (model.isEmpty()) {
+                    Log.i(TAG, "No OpenRouter model selected, using fallback")
+                    _fallbackReason.value = FallbackReason.NO_API_KEY
+                    startFallbackRecognition(languageTag, onResult)
+                    return
+                }
+
+                if (!openRouterEnabled) {
+                    Log.i(TAG, "OpenRouter voice disabled, using fallback")
+                    _fallbackReason.value = FallbackReason.DISABLED
+                    startFallbackRecognition(languageTag, onResult)
+                    return
+                }
+
+                // Use OpenRouter
+                Log.i(TAG, "Starting OpenRouter voice recognition with model: $model")
+                _activeMode.value = RecognitionMode.OPENAI  // Reuse OPENAI state for cloud STT
+                _fallbackReason.value = FallbackReason.NONE
+
+                openRouterClient.startListening(
+                    apiKey = apiKey,
+                    model = model,
+                    languageTag = languageTag,
+                    onPartial = { partialText ->
+                        onPartialResult?.invoke(partialText)
+                    },
+                    onFinal = { finalText ->
+                        Log.i(TAG, "OpenRouter final result: ${finalText.take(100)}")
+                        _isListening.value = false
+                        _activeMode.value = RecognitionMode.NONE
+
+                        val result = if (finalText.isEmpty()) {
+                            VoiceCommandHandler.VoiceResult.Text("")
+                        } else {
+                            processText(finalText)
+                        }
+                        onResult(result)
+                    },
+                    onError = { errorMessage ->
+                        Log.w(TAG, "OpenRouter error: $errorMessage, falling back to Android")
+                        _lastError.value = errorMessage
+                        _fallbackReason.value = FallbackReason.API_ERROR
+                        startFallbackRecognition(languageTag, onResult)
+                    }
+                )
+                return
+            }
+            else -> {
+                Log.w(TAG, "Unknown provider: $provider, using fallback")
+                _activeMode.value = RecognitionMode.FALLBACK
+                _fallbackReason.value = FallbackReason.PREFERENCE
+                startFallbackRecognition(languageTag, onResult)
+                return
+            }
+        }
     }
 
     private fun startFallbackRecognition(
@@ -247,7 +400,12 @@ class VoiceRecognitionManager(private val context: Context) {
     fun stopListening() {
         when (_activeMode.value) {
             RecognitionMode.OPENAI -> {
-                openAIClient.stopListening()
+                // Could be OpenAI or OpenRouter - check both
+                if (openAIClient.isListening.value) {
+                    openAIClient.stopListening()
+                } else {
+                    openRouterClient.stopListening()
+                }
             }
             RecognitionMode.FALLBACK -> {
                 fallbackHandler.stopListening()
@@ -265,11 +423,14 @@ class VoiceRecognitionManager(private val context: Context) {
      */
     fun getModeDescription(): String {
         return when (_activeMode.value) {
-            RecognitionMode.OPENAI -> "OpenAI"
+            RecognitionMode.OPENAI -> {
+                val provider = getVoiceProvider()
+                if (provider == "openrouter") "OpenRouter" else "OpenAI"
+            }
             RecognitionMode.FALLBACK -> {
                 when (_fallbackReason.value) {
                     FallbackReason.NO_API_KEY -> "Device (no API key)"
-                    FallbackReason.DISABLED -> "Device (OpenAI disabled)"
+                    FallbackReason.DISABLED -> "Device (cloud disabled)"
                     FallbackReason.CONNECTION_FAILED -> "Device (connection failed)"
                     FallbackReason.API_ERROR -> "Device (API error)"
                     else -> "Device"
@@ -285,6 +446,7 @@ class VoiceRecognitionManager(private val context: Context) {
     fun cleanup() {
         stopListening()
         openAIClient.destroy()
+        openRouterClient.destroy()
         fallbackHandler.cleanup()
     }
 }

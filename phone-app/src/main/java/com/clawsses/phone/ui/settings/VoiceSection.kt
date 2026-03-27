@@ -2,7 +2,11 @@
 
 package com.clawsses.phone.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,21 +20,22 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -52,6 +57,25 @@ import androidx.compose.ui.unit.dp
 import com.clawsses.phone.voice.VoiceLanguageManager
 import com.clawsses.phone.voice.VoiceRecognitionManager
 
+/**
+ * Available voice recognition providers.
+ */
+private const val PROVIDER_DEVICE = "device"
+private const val PROVIDER_OPENAI = "openai"
+private const val PROVIDER_OPENROUTER = "openrouter"
+
+/**
+ * Popular OpenRouter models suitable for audio/transcription tasks.
+ */
+private data class VoiceModel(val id: String, val displayName: String)
+
+private val OPENROUTER_VOICE_MODELS = listOf(
+    VoiceModel("openai/whisper-large-v3", "Whisper Large v3"),
+    VoiceModel("openai/whisper-1", "Whisper"),
+    VoiceModel("google/gemini-2.0-flash-001", "Gemini 2.0 Flash"),
+    VoiceModel("google/gemini-2.5-flash-preview", "Gemini 2.5 Flash"),
+)
+
 @Composable
 fun VoiceSection(
     voiceLanguageManager: VoiceLanguageManager,
@@ -67,9 +91,9 @@ fun VoiceSection(
         ?.displayName ?: selectedLanguage.ifEmpty { "Default" }
 
     Column(modifier = modifier.padding(horizontal = 16.dp)) {
-        // OpenAI Voice Recognition settings
+        // Voice Provider settings
         if (voiceRecognitionManager != null) {
-            OpenAIVoiceSettings(voiceRecognitionManager)
+            VoiceProviderSettings(voiceRecognitionManager)
             Spacer(Modifier.height(12.dp))
         }
 
@@ -130,15 +154,26 @@ fun VoiceSection(
 }
 
 @Composable
-private fun OpenAIVoiceSettings(
+private fun VoiceProviderSettings(
     voiceRecognitionManager: VoiceRecognitionManager,
 ) {
-    var apiKey by remember { mutableStateOf(voiceRecognitionManager.getOpenAIApiKey()) }
-    var showApiKey by remember { mutableStateOf(false) }
-    var isEnabled by remember { mutableStateOf(voiceRecognitionManager.isOpenAIVoiceEnabled()) }
+    // Current provider state
+    var selectedProvider by remember { mutableStateOf(voiceRecognitionManager.getVoiceProvider()) }
+    var apiKeyVisible by remember { mutableStateOf(false) }
 
-    val hasApiKey = apiKey.isNotEmpty()
-    val isConfigured = hasApiKey && isEnabled
+    // OpenAI state
+    var openAiKey by remember { mutableStateOf(voiceRecognitionManager.getOpenAIApiKey()) }
+    var openAiEnabled by remember { mutableStateOf(voiceRecognitionManager.isOpenAIVoiceEnabled()) }
+
+    // OpenRouter state
+    var openRouterKey by remember { mutableStateOf(voiceRecognitionManager.getOpenRouterApiKey()) }
+    var openRouterModel by remember { mutableStateOf(voiceRecognitionManager.getOpenRouterModel()) }
+    var openRouterEnabled by remember { mutableStateOf(voiceRecognitionManager.isOpenRouterVoiceEnabled()) }
+    var modelDropdownExpanded by remember { mutableStateOf(false) }
+
+    val currentProvider = selectedProvider
+    val isCloudActive = (currentProvider == PROVIDER_OPENAI && openAiEnabled && openAiKey.isNotEmpty()) ||
+            (currentProvider == PROVIDER_OPENROUTER && openRouterEnabled && openRouterKey.isNotEmpty())
 
     Surface(
         shape = RoundedCornerShape(12.dp),
@@ -150,7 +185,7 @@ private fun OpenAIVoiceSettings(
                 .fillMaxWidth()
                 .padding(16.dp),
         ) {
-            // Header row with icon and enable switch
+            // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -158,103 +193,299 @@ private fun OpenAIVoiceSettings(
                 Icon(
                     Icons.Default.Cloud,
                     contentDescription = null,
-                    tint = if (isConfigured) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = if (isCloudActive) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(24.dp),
                 )
                 Spacer(Modifier.width(16.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "OpenAI Voice Recognition",
+                        "Voice Recognition",
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
                         when {
-                            !hasApiKey -> "API key required"
-                            isEnabled -> "Active - using GPT-4o"
-                            else -> "Disabled - using device"
+                            currentProvider == PROVIDER_OPENAI && openAiEnabled && openAiKey.isNotEmpty() -> "OpenAI — GPT-4o"
+                            currentProvider == PROVIDER_OPENROUTER && openRouterEnabled && openRouterKey.isNotEmpty() -> {
+                                val modelName = OPENROUTER_VOICE_MODELS.firstOrNull { it.id == openRouterModel }?.displayName ?: openRouterModel
+                                "OpenRouter — $modelName"
+                            }
+                            else -> "Device (Android SpeechRecognizer)"
                         },
                         style = MaterialTheme.typography.bodySmall,
-                        color = when {
-                            isConfigured -> Color(0xFF4CAF50)
-                            !hasApiKey -> MaterialTheme.colorScheme.onSurfaceVariant
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        color = if (isCloudActive) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(
-                    checked = isEnabled,
-                    onCheckedChange = { enabled ->
-                        isEnabled = enabled
-                        voiceRecognitionManager.setOpenAIVoiceEnabled(enabled)
-                    },
-                    enabled = hasApiKey,
-                )
             }
 
             Spacer(Modifier.height(16.dp))
 
-            // API Key input field
-            OutlinedTextField(
-                value = apiKey,
-                onValueChange = { newKey ->
-                    apiKey = newKey
-                    voiceRecognitionManager.setOpenAIApiKey(newKey)
-                },
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text("OpenAI API Key") },
-                placeholder = { Text("sk-...") },
-                singleLine = true,
-                visualTransformation = if (showApiKey) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                trailingIcon = {
-                    Row {
-                        // Toggle visibility
-                        IconButton(onClick = { showApiKey = !showApiKey }) {
-                            Icon(
-                                if (showApiKey) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (showApiKey) "Hide API key" else "Show API key",
-                            )
-                        }
-                        // Clear button
-                        if (apiKey.isNotEmpty()) {
-                            IconButton(onClick = {
-                                apiKey = ""
-                                voiceRecognitionManager.setOpenAIApiKey("")
-                            }) {
-                                Icon(
-                                    Icons.Default.Close,
-                                    contentDescription = "Clear API key",
-                                )
-                            }
-                        }
-                    }
-                },
-                supportingText = {
-                    if (hasApiKey) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                Icons.Default.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = Color(0xFF4CAF50),
-                            )
-                            Spacer(Modifier.width(4.dp))
-                            Text(
-                                "API key saved",
-                                color = Color(0xFF4CAF50),
-                            )
-                        }
-                    } else {
-                        Text("Required for OpenAI voice recognition")
-                    }
+            // Provider selection
+            Text(
+                "Provider",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+
+            // Device option
+            ProviderRow(
+                label = "Device",
+                description = "Android built-in speech recognition",
+                isSelected = currentProvider == PROVIDER_DEVICE,
+                onClick = {
+                    selectedProvider = PROVIDER_DEVICE
+                    voiceRecognitionManager.setVoiceProvider(PROVIDER_DEVICE)
                 },
             )
 
-            // Info text
-            Spacer(Modifier.height(8.dp))
+            // OpenAI option
+            ProviderRow(
+                label = "OpenAI",
+                description = "GPT-4o Realtime API",
+                isSelected = currentProvider == PROVIDER_OPENAI,
+                onClick = {
+                    selectedProvider = PROVIDER_OPENAI
+                    voiceRecognitionManager.setVoiceProvider(PROVIDER_OPENAI)
+                },
+            )
+
+            // OpenRouter option
+            ProviderRow(
+                label = "OpenRouter",
+                description = "Whisper, Gemini and more",
+                isSelected = currentProvider == PROVIDER_OPENROUTER,
+                onClick = {
+                    selectedProvider = PROVIDER_OPENROUTER
+                    voiceRecognitionManager.setVoiceProvider(PROVIDER_OPENROUTER)
+                },
+            )
+
+            // OpenAI API key
+            AnimatedVisibility(
+                visible = currentProvider == PROVIDER_OPENAI,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = openAiKey,
+                        onValueChange = { newKey ->
+                            openAiKey = newKey
+                            voiceRecognitionManager.setOpenAIApiKey(newKey)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("OpenAI API Key") },
+                        placeholder = { Text("sk-...") },
+                        singleLine = true,
+                        visualTransformation = if (apiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            Row {
+                                IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                                    Icon(
+                                        if (apiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (apiKeyVisible) "Hide" else "Show",
+                                    )
+                                }
+                                if (openAiKey.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        openAiKey = ""
+                                        voiceRecognitionManager.setOpenAIApiKey("")
+                                    }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Clear")
+                                    }
+                                }
+                            }
+                        },
+                        supportingText = {
+                            if (openAiKey.isNotEmpty()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Check, null, Modifier.size(14.dp), Color(0xFF4CAF50))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Saved", color = Color(0xFF4CAF50))
+                                }
+                            } else {
+                                Text("Required for OpenAI voice recognition")
+                            }
+                        },
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Enable cloud recognition",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Switch(
+                            checked = openAiEnabled,
+                            onCheckedChange = { enabled ->
+                                openAiEnabled = enabled
+                                voiceRecognitionManager.setOpenAIVoiceEnabled(enabled)
+                            },
+                            enabled = openAiKey.isNotEmpty(),
+                        )
+                    }
+                }
+            }
+
+            // OpenRouter API key + model selector
+            AnimatedVisibility(
+                visible = currentProvider == PROVIDER_OPENROUTER,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                Column {
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = openRouterKey,
+                        onValueChange = { newKey ->
+                            openRouterKey = newKey
+                            voiceRecognitionManager.setOpenRouterApiKey(newKey)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("OpenRouter API Key") },
+                        placeholder = { Text("sk-or-...") },
+                        singleLine = true,
+                        visualTransformation = if (apiKeyVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            Row {
+                                IconButton(onClick = { apiKeyVisible = !apiKeyVisible }) {
+                                    Icon(
+                                        if (apiKeyVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (apiKeyVisible) "Hide" else "Show",
+                                    )
+                                }
+                                if (openRouterKey.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        openRouterKey = ""
+                                        voiceRecognitionManager.setOpenRouterApiKey("")
+                                    }) {
+                                        Icon(Icons.Default.Close, contentDescription = "Clear")
+                                    }
+                                }
+                            }
+                        },
+                        supportingText = {
+                            if (openRouterKey.isNotEmpty()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Check, null, Modifier.size(14.dp), Color(0xFF4CAF50))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Saved", color = Color(0xFF4CAF50))
+                                }
+                            } else {
+                                Text("Get your key at openrouter.ai/keys")
+                            }
+                        },
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    // Model selector
+                    Text(
+                        "Model",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
+                    )
+                    val currentModelName = OPENROUTER_VOICE_MODELS
+                        .firstOrNull { it.id == openRouterModel }
+                        ?.displayName
+                        ?: if (openRouterModel.isNotEmpty()) openRouterModel else "Select model..."
+
+                    OutlinedButton(
+                        onClick = { modelDropdownExpanded = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(currentModelName)
+                    }
+
+                    androidx.compose.material3.DropdownMenu(
+                        expanded = modelDropdownExpanded,
+                        onDismissRequest = { modelDropdownExpanded = false },
+                        modifier = Modifier.fillMaxWidth(0.9f),
+                    ) {
+                        OPENROUTER_VOICE_MODELS.forEach { model ->
+                            androidx.compose.material3.DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (model.id == openRouterModel) {
+                                            Icon(Icons.Default.Check, null, Modifier.padding(end = 8.dp))
+                                        }
+                                        Column {
+                                            Text(model.displayName)
+                                            Text(
+                                                model.id,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    openRouterModel = model.id
+                                    voiceRecognitionManager.setOpenRouterModel(model.id)
+                                    modelDropdownExpanded = false
+                                },
+                            )
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Enable cloud recognition",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Switch(
+                            checked = openRouterEnabled,
+                            onCheckedChange = { enabled ->
+                                openRouterEnabled = enabled
+                                voiceRecognitionManager.setOpenRouterVoiceEnabled(enabled)
+                            },
+                            enabled = openRouterKey.isNotEmpty(),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProviderRow(
+    label: String,
+    description: String,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(vertical = 4.dp),
+    ) {
+        androidx.compose.material3.RadioButton(
+            selected = isSelected,
+            onClick = onClick,
+        )
+        Spacer(Modifier.width(8.dp))
+        Column {
             Text(
-                "OpenAI provides higher accuracy voice recognition using GPT-4o. " +
-                    "Falls back to device recognition if unavailable.",
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

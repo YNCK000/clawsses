@@ -1506,6 +1506,16 @@ class HudActivity : ComponentActivity() {
                     Log.d(GlassesApp.TAG, "TTS state: enabled=$enabled, voice=$voiceName")
                 }
 
+                "tts_audio" -> {
+                    // TTS audio data from phone — decode and play on glasses speakers
+                    val audioBase64 = msg.optString("audioBase64", "")
+                    if (audioBase64.isNotEmpty()) {
+                        playTtsAudio(audioBase64)
+                    } else {
+                        Log.w(GlassesApp.TAG, "tts_audio: empty audio data")
+                    }
+                }
+
                 "get_ip" -> {
                     // Phone requesting local WiFi IP for ADB connection
                     val localIp = getLocalWifiIp()
@@ -1636,6 +1646,63 @@ class HudActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e(GlassesApp.TAG, "Failed to get local WiFi IP", e)
             null
+        }
+    }
+
+    // TTS audio playback
+    private var ttsMediaPlayer: android.media.MediaPlayer? = null
+
+    /**
+     * Play TTS audio on glasses speakers.
+     * Audio arrives as base64-encoded MP3 from the phone app.
+     */
+    private fun playTtsAudio(audioBase64: String) {
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                // Decode base64 to bytes
+                val audioBytes = Base64.decode(audioBase64, Base64.DEFAULT)
+                Log.d(GlassesApp.TAG, "TTS audio received: ${audioBytes.size} bytes")
+
+                // Write to temp file
+                val tempFile = java.io.File.createTempFile("tts_", ".mp3", cacheDir)
+                tempFile.writeBytes(audioBytes)
+
+                // Play on main thread
+                launch(kotlinx.coroutines.Dispatchers.Main) {
+                    try {
+                        // Stop any current playback
+                        ttsMediaPlayer?.let {
+                            if (it.isPlaying) it.stop()
+                            it.release()
+                        }
+
+                        ttsMediaPlayer = android.media.MediaPlayer().apply {
+                            setDataSource(tempFile.absolutePath)
+                            setOnCompletionListener {
+                                Log.d(GlassesApp.TAG, "TTS playback completed")
+                                it.release()
+                                ttsMediaPlayer = null
+                                tempFile.delete()
+                            }
+                            setOnErrorListener { mp, what, extra ->
+                                Log.e(GlassesApp.TAG, "TTS playback error: what=$what, extra=$extra")
+                                mp.release()
+                                ttsMediaPlayer = null
+                                tempFile.delete()
+                                true
+                            }
+                            prepare()
+                            start()
+                        }
+                        Log.d(GlassesApp.TAG, "TTS playback started on glasses")
+                    } catch (e: Exception) {
+                        Log.e(GlassesApp.TAG, "Failed to play TTS audio", e)
+                        tempFile.delete()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(GlassesApp.TAG, "Failed to decode TTS audio", e)
+            }
         }
     }
 }

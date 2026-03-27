@@ -385,6 +385,22 @@ data class TtsState(
     }
 }
 
+/**
+ * TTS audio data sent from phone to glasses for playback.
+ * Phone synthesizes TTS and sends the audio data to be played on glasses speakers.
+ */
+data class TtsAudio(
+    @SerializedName("type") val type: String = "tts_audio",
+    @SerializedName("audioBase64") val audioBase64: String,
+    @SerializedName("text") val text: String? = null
+) {
+    fun toJson(): String = gson.toJson(this)
+
+    companion object {
+        fun fromJson(json: String): TtsAudio = gson.fromJson(json, TtsAudio::class.java)
+    }
+}
+
 // ============================================
 // Utility
 // ============================================

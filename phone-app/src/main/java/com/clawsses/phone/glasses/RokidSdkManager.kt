@@ -56,7 +56,8 @@ object RokidSdkManager {
     private var pendingConnect = false
 
     // Last known brightness from glasses (tracked via BrightnessUpdateListener)
-    private var lastKnownBrightness: Int = 15
+    // -1 = unknown (not yet received from glasses), don't auto-apply until we know user's preference
+    private var lastKnownBrightness: Int = -1
 
     // SN auto-generation: first attempt fails, we read the SN and retry
     private var snAutoRetryInProgress = false
@@ -919,7 +920,13 @@ object RokidSdkManager {
             return false
         }
         return try {
-            cxrApi?.setGlassBrightness(lastKnownBrightness)
+            // Only set brightness if we have a known value from the glasses
+            // Don't auto-apply default brightness on first connect - respect user's manual setting
+            if (lastKnownBrightness >= 0) {
+                cxrApi?.setGlassBrightness(lastKnownBrightness)
+            } else {
+                Log.d(TAG, "Brightness unknown, skipping auto-set")
+            }
             cxrApi?.setScreenOffTimeout(30)
             Log.i(TAG, "Wake glasses screen: brightness=$lastKnownBrightness, timeout reset to 30s")
             true
