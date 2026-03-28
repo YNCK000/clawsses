@@ -310,12 +310,14 @@ fun HudScreen(
     // Key improvements:
     // - Don't auto-scroll during streaming if user has scrolled up to read
     // - Use smooth animated scroll instead of instant jumps
-    // - Don't force Int.MAX_VALUE offset — let Compose determine natural position
+    // - When scrolling to last item, chain a pixel-based scroll to reach the
+    //   actual bottom of the content (animateScrollToItem only aligns the top
+    //   of the item to the viewport top — if the last message is taller than
+    //   the viewport, the bottom would be cut off without this extra step)
     LaunchedEffect(state.scrollPosition, state.scrollTrigger, state.isScrolledToEnd) {
         val totalItems = state.messages.size
         if (totalItems > 0 && state.scrollPosition < totalItems) {
             val currentIndex = listState.firstVisibleItemIndex
-            val isStreaming = state.messages.lastOrNull()?.isStreaming == true
 
             if (state.scrollPosition < currentIndex) {
                 // Scrolling up: use pixel-based animation for smoothness
@@ -334,13 +336,15 @@ fun HudScreen(
             } else if (state.scrollPosition == totalItems - 1) {
                 // Scrolling to last item: only auto-scroll if user is already at bottom
                 // or if not streaming (user can read new messages in peace)
-                val shouldScroll = !isStreaming || state.isScrolledToEnd
+                val shouldScroll = state.isScrolledToEnd
 
                 if (shouldScroll) {
-                    // Use smooth animated scroll without Int.MAX_VALUE offset
-                    // This lets Compose figure out natural position instead of
-                    // forcing pixel-perfect bottom alignment
+                    // First align the last item to the viewport top
                     listState.animateScrollToItem(state.scrollPosition)
+                    // Then scroll by a large amount to reach the true bottom of the
+                    // content. This handles tall messages that extend below the viewport.
+                    // animateScrollBy clamps to max scroll position, so MAX_VALUE is safe.
+                    listState.animateScrollBy(Float.MAX_VALUE)
                 }
                 // If user has scrolled up during streaming, don't yank them to bottom
             } else {

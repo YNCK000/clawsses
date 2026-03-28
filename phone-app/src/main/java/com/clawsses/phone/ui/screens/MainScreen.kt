@@ -803,7 +803,7 @@ fun MainScreen() {
                         state = listState,
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(chatMessages) { msg ->
+                        items(chatMessages, key = { it.id }) { msg ->
                             ChatMessageRow(msg)
                         }
                     }

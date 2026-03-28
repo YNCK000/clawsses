@@ -98,6 +98,8 @@ class HudActivity : ComponentActivity() {
     // Wake signal handling
     private var clearWakeNotificationJob: Job? = null
 
+
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -906,13 +908,17 @@ class HudActivity : ComponentActivity() {
 
     private fun scrollUp() {
         val current = hudState.value
-        val newPosition = maxOf(0, current.scrollPosition - 5) // scroll by 5 messages
-        hudState.value = current.copy(scrollPosition = newPosition)
-
-        // If we've scrolled to the top and there might be more history, request it
-        if (newPosition == 0 && current.hasMoreHistory && !current.isLoadingMoreHistory && current.messages.isNotEmpty()) {
-            requestMoreHistory()
+        if (current.scrollPosition <= 0) {
+            // Already at earliest visible item — request history if available
+            if (current.hasMoreHistory && !current.isLoadingMoreHistory && current.messages.isNotEmpty()) {
+                requestMoreHistory()
+            }
+            // Still bump scrollTrigger so LaunchedEffect can attempt the scroll
+            hudState.value = current.copy(scrollTrigger = current.scrollTrigger + 1)
+            return
         }
+        val newPosition = maxOf(0, current.scrollPosition - 5) // scroll by 5 messages
+        hudState.value = current.copy(scrollPosition = newPosition, scrollTrigger = current.scrollTrigger + 1)
     }
 
     private fun requestMoreHistory() {
@@ -932,8 +938,13 @@ class HudActivity : ComponentActivity() {
     private fun scrollDown() {
         val current = hudState.value
         val maxScroll = maxOf(0, current.messages.size - 1)
+        if (current.scrollPosition >= maxScroll) {
+            // Already at latest item — just bump trigger for any effect
+            hudState.value = current.copy(scrollTrigger = current.scrollTrigger + 1)
+            return
+        }
         val newPosition = minOf(maxScroll, current.scrollPosition + 5)
-        hudState.value = current.copy(scrollPosition = newPosition)
+        hudState.value = current.copy(scrollPosition = newPosition, scrollTrigger = current.scrollTrigger + 1)
     }
 
     // ============== Voice Recognition ==============
@@ -1137,7 +1148,7 @@ class HudActivity : ComponentActivity() {
                             messages = messages,
                             agentState = AgentState.IDLE,
                             photoThumbnails = emptyList(),
-                            scrollPosition = messages.size - 1,
+                            scrollPosition = if (current.isScrolledToEnd) messages.size - 1 else current.scrollPosition,
                             scrollTrigger = current.scrollTrigger + 1
                         )
                         Log.d(GlassesApp.TAG, "User message (phone): ${content.take(50)}, photos=${thumbnails.size}")
@@ -1160,7 +1171,7 @@ class HudActivity : ComponentActivity() {
                         hudState.value = current.copy(
                             messages = messages,
                             agentState = AgentState.IDLE,
-                            scrollPosition = messages.size - 1,
+                            scrollPosition = if (current.isScrolledToEnd) messages.size - 1 else current.scrollPosition,
                             scrollTrigger = current.scrollTrigger + 1
                         )
                         Log.d(GlassesApp.TAG, "Assistant message: ${content.take(50)}")
