@@ -314,7 +314,7 @@ fun HudScreen(
     //   actual bottom of the content (animateScrollToItem only aligns the top
     //   of the item to the viewport top — if the last message is taller than
     //   the viewport, the bottom would be cut off without this extra step)
-    LaunchedEffect(state.scrollPosition, state.scrollTrigger, state.isScrolledToEnd) {
+    LaunchedEffect(state.scrollPosition, state.scrollTrigger) {
         val totalItems = state.messages.size
         if (totalItems > 0 && state.scrollPosition < totalItems) {
             val currentIndex = listState.firstVisibleItemIndex
@@ -334,18 +334,16 @@ fun HudScreen(
                 val scrollDistance = -(itemsToScroll * avgItemHeight)
                 listState.animateScrollBy(scrollDistance)
             } else if (state.scrollPosition == totalItems - 1) {
-                // Scrolling to last item: only auto-scroll if user is already at bottom
-                // or if not streaming (user can read new messages in peace)
-                val shouldScroll = state.isScrolledToEnd
-
-                if (shouldScroll) {
-                    // First align the last item to the viewport top
-                    listState.animateScrollToItem(state.scrollPosition)
-                    // Then scroll by a large amount to reach the true bottom of the
-                    // content. This handles tall messages that extend below the viewport.
-                    // animateScrollBy clamps to max scroll position, so MAX_VALUE is safe.
-                    listState.animateScrollBy(Float.MAX_VALUE)
-                }
+                // Scrolling to last item. The message receipt handler already
+                // guards against unwanted auto-scroll: it only sets
+                // scrollPosition to last when isScrolledToEnd is true.
+                // So if we're here, it's always safe to scroll to the end —
+                // whether the user swiped down or a new message arrived.
+                listState.animateScrollToItem(state.scrollPosition)
+                // animateScrollToItem only aligns the top of the item — if the
+                // last message is taller than the viewport, the bottom would be
+                // cut off. animateScrollBy clamps to max scroll position.
+                listState.animateScrollBy(Float.MAX_VALUE)
                 // If user has scrolled up during streaming, don't yank them to bottom
             } else {
                 listState.animateScrollToItem(state.scrollPosition)
