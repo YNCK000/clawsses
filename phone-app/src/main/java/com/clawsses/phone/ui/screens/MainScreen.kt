@@ -343,8 +343,8 @@ fun MainScreen() {
                         val text = json.optString("text", "")
                         val images = pendingPhotos.ifEmpty { null }
                         android.util.Log.d("MainScreen", "Received user input from glasses (${text.length} chars, photos=${pendingPhotos.size})")
-                        if (text.isNotEmpty()) {
-                            openClawClient.sendMessage(text, images)
+                        if (text.isNotEmpty() || images != null) {
+                            openClawClient.sendMessage(text.ifEmpty { "" }, images)
                         }
                         pendingPhotos = emptyList()
                     }
@@ -631,9 +631,10 @@ fun MainScreen() {
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
                         onSend = {
-                            if (inputText.isNotBlank()) {
+                            if (inputText.isNotBlank() || pendingPhotos.isNotEmpty()) {
                                 val hadPhotos = pendingPhotos.isNotEmpty()
-                                openClawClient.sendMessage(inputText, pendingPhotos.ifEmpty { null })
+                                val messageText = inputText.ifBlank { "" }
+                                openClawClient.sendMessage(messageText, pendingPhotos.ifEmpty { null })
                                 inputText = ""
                                 pendingPhotos = emptyList()
                                 if (hadPhotos) {
@@ -730,9 +731,10 @@ fun MainScreen() {
                 // Send button
                 IconButton(
                     onClick = {
-                        if (inputText.isNotBlank()) {
+                        if (inputText.isNotBlank() || pendingPhotos.isNotEmpty()) {
                             val hadPhotos = pendingPhotos.isNotEmpty()
-                            openClawClient.sendMessage(inputText, pendingPhotos.ifEmpty { null })
+                            val messageText = inputText.ifBlank { "" }
+                            openClawClient.sendMessage(messageText, pendingPhotos.ifEmpty { null })
                             inputText = ""
                             pendingPhotos = emptyList()
                             if (hadPhotos) {
@@ -917,10 +919,7 @@ fun ChatMessageRow(msg: ChatMessage) {
             .padding(vertical = 2.dp),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
     ) {
-        Text(
-            text = msg.content,
-            color = if (isUser) Color(0xFF4EC9B0) else Color(0xFFD4D4D4),
-            fontSize = 13.sp,
+        Column(
             modifier = Modifier
                 .background(
                     if (isUser) Color(0xFF2A3A2A) else Color.Transparent,
@@ -928,7 +927,47 @@ fun ChatMessageRow(msg: ChatMessage) {
                 )
                 .padding(horizontal = 8.dp, vertical = 4.dp)
                 .fillMaxWidth(0.85f)
-        )
+        ) {
+            if (msg.content.isNotEmpty()) {
+                Text(
+                    text = msg.content,
+                    color = if (isUser) Color(0xFF4EC9B0) else Color(0xFFD4D4D4),
+                    fontSize = 13.sp,
+                )
+            }
+            // Render image attachments as thumbnails
+            if (msg.attachments.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = if (msg.content.isNotEmpty()) 4.dp else 0.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    msg.attachments.forEach { attachment ->
+                        if (attachment.base64 != null) {
+                            val thumbnail = remember(attachment.base64) {
+                                try {
+                                    val bytes = android.util.Base64.decode(attachment.base64, android.util.Base64.DEFAULT)
+                                    val opts = android.graphics.BitmapFactory.Options().apply { inSampleSize = 4 }
+                                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
+                                        ?.asImageBitmap()
+                                } catch (_: Exception) { null }
+                            }
+                            if (thumbnail != null) {
+                                Image(
+                                    bitmap = thumbnail,
+                                    contentDescription = attachment.fileName ?: "Image",
+                                    modifier = Modifier
+                                        .height(120.dp)
+                                        .clip(RoundedCornerShape(6.dp)),
+                                    contentScale = ContentScale.Fit
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -1393,6 +1432,21 @@ private fun buildChatHistoryJson(
                 put("content", if (msg.content.length > maxContentLength)
                     msg.content.take(maxContentLength) + "..." else msg.content)
                 put("timestamp", msg.timestamp)
+                // Include image attachments (thumbnail only for glasses bandwidth)
+                if (msg.attachments.isNotEmpty()) {
+                    val attachArr = org.json.JSONArray()
+                    for (att in msg.attachments) {
+                        attachArr.put(org.json.JSONObject().apply {
+                            put("type", att.type)
+                            att.mimeType?.let { put("mimeType", it) }
+                            att.base64?.let {
+                                // Truncate large attachments for glasses
+                                put("base64", if (it.length > 50000) it.take(50000) else it)
+                            }
+                        })
+                    }
+                    put("attachments", attachArr)
+                }
             })
         }
         put("messages", arr)
